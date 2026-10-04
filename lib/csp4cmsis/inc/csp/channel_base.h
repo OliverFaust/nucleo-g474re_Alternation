@@ -1,7 +1,8 @@
 #ifndef CSP4CMSIS_CHANNEL_BASE_H
 #define CSP4CMSIS_CHANNEL_BASE_H
 
-#include <stddef.h> 
+#include <stddef.h>
+#include <new>
 
 namespace csp {
 
@@ -18,7 +19,44 @@ namespace csp {
 
 namespace csp::internal {
 
-    class Guard; 
+    class Guard;
+
+    /**
+     * @brief Storage for one ALT guard, owned by a channel-end handle
+     * (Chanin/Chanout). Guards are constructed into the caller's slot by
+     * getInputGuard()/getOutputGuard(), so their state (target buffer,
+     * registration) belongs to the process's own channel end, not to the
+     * channel: two writers ALTing on one channel no longer share -- and
+     * re-target -- a single guard object. A process must not share one
+     * handle object with another process (each process owns its ends).
+     */
+    struct GuardSlot {
+        static constexpr size_t SIZE = 24;
+        alignas(void*) unsigned char bytes[SIZE];
+
+        template <typename G, typename... Args>
+        G* emplace(Args&&... args) {
+            static_assert(sizeof(G) <= SIZE, "GuardSlot too small for this guard type");
+            static_assert(alignof(G) <= alignof(void*), "guard over-aligned for GuardSlot");
+            // Guards own no resources; the previous occupant is simply
+            // overwritten (no destructor side effects to preserve).
+            return ::new (static_cast<void*>(bytes)) G(static_cast<Args&&>(args)...);
+        }
+    };
+
+    /**
+     * @brief ISR write interface. Only buffered channels implement it: an
+     * interrupt can never wait, so it can only hand data to a buffer.
+     * Obtained by applications through csp::IsrChanout<T>.
+     */
+    template <typename DATA_TYPE>
+    class IsrSink {
+    public:
+        /// Never blocks. Block policy: false if full; KeepNewest/KeepOldest: true.
+        virtual bool putFromISR(const DATA_TYPE& data) = 0;
+    protected:
+        ~IsrSink() = default;
+    };
 
     /**
      * @brief The core contract for CSP communication.
@@ -59,29 +97,14 @@ namespace csp::internal {
          */
         virtual bool space_available() = 0;
 
-        /** @brief ISR-safe non-blocking write. */
-        virtual bool putFromISR(const DATA_TYPE& data) = 0;
-
-        virtual internal::Guard* getInputGuard(DATA_TYPE& dest) = 0;
-        virtual internal::Guard* getOutputGuard(const DATA_TYPE& source) = 0;
+        /// Constructs this channel's input/output guard in `slot` (see GuardSlot).
+        virtual internal::Guard* getInputGuard(GuardSlot& slot, DATA_TYPE& dest) = 0;
+        virtual internal::Guard* getOutputGuard(GuardSlot& slot, const DATA_TYPE& source) = 0;
         
     public:
         inline virtual ~BaseAltChan() = default;
 
         friend class ::csp::Alternative; 
-    };
-
-    // =============================================================
-    // BaseAltChan (FULL SPECIALIZATION for void)
-    // =============================================================
-    template <>
-    class BaseAltChan<void> : public BaseChan<void> {
-    public:
-        virtual bool pending() = 0;
-        virtual bool space_available() = 0;
-        virtual bool putFromISR() = 0; // Added for signal consistency
-        virtual Guard* getInputGuard() = 0;
-        virtual Guard* getOutputGuard() = 0;
     };
 
 } // namespace csp::internal

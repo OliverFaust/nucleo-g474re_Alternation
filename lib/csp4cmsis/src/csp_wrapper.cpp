@@ -1,8 +1,6 @@
 // --- csp_wrapper.cpp ---
 
 #include "csp/run.h" // Includes the declaration of ThreadFuncWrapper and the definition of csp::TaskCtx
-#include "FreeRTOS.h" // May be needed if run.h doesn't include it implicitly
-#include "task.h"
 
 // Define the function using the definition that was removed from the header.
 extern "C" {
@@ -15,7 +13,7 @@ extern "C" {
 
         // 2. Signal completion
         if (ctx->completion_sem) {
-            xSemaphoreGive(ctx->completion_sem);
+            osSemaphoreRelease(ctx->completion_sem);
         }
 
         // 3. API 1.3: ctx is caller-owned static storage (a ParallelHelper's
@@ -26,11 +24,14 @@ extern "C" {
         // undefined behavior (freeing memory that was never allocated
         // by operator new).
 
-        // 4. Delete this FreeRTOS task. Safe for a statically-created
-        // task: vTaskDelete() reclaims FreeRTOS's internal bookkeeping
-        // for the task, but never touches the caller-supplied stack/TCB
-        // buffers -- those remain owned by the CSProcessStatic<N> object,
-        // which is what we want (it has static storage duration anyway).
-        vTaskDelete(NULL);
+        // 4. Terminate this RTOS2 task. osThreadExit() is CMSIS-RTOS2's
+        // self-termination call for the calling thread -- unlike
+        // FreeRTOS's vTaskDelete(NULL), it never returns, so there's
+        // nothing after this call. Safe for a statically-created task:
+        // it reclaims the RTOS's internal bookkeeping for the task, but
+        // never touches the caller-supplied stack/TCB buffers -- those
+        // remain owned by the CSProcessStatic<N> object, which is what
+        // we want (it has static storage duration anyway).
+        osThreadExit();
     }
 }

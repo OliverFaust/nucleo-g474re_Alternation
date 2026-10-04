@@ -1,153 +1,47 @@
 #ifndef CSP4CMSIS_RENDEZVOUS_CHANNEL_H
 #define CSP4CMSIS_RENDEZVOUS_CHANNEL_H
 
-#include "channel_base.h"       
-#include "alt_channel_sync.h"   
-#include "FreeRTOS.h"
-#include "task.h"               
-#include <cstring>    
+#include "channel_base.h"
+#include "alt_channel_sync.h"
+#include <type_traits>
 
 namespace csp::internal {
 
 /**
- * @brief Zero-capacity Synchronous Channel (Rendezvous).
- * Updated to support KeepNewest/KeepOldest (Non-blocking handshake).
+ * @brief Zero-capacity synchronous channel (rendezvous), OWRV protocol.
+ * Task-to-task only: no ISR write path, no sampling policies (C1/C2).
+ * The logic lives in the non-template RendezvousCore (alt_channel_sync.h).
  */
 template <typename T, csp::BufferPolicy P = csp::BufferPolicy::Block>
 class RendezvousChannel : public BaseAltChan<T> {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "RendezvousChannel: T must be trivially copyable (elements are copied with memcpy)");
+    static_assert(P == csp::BufferPolicy::Block,
+                  "KeepNewest/KeepOldest need a buffer: use SamplingBufferedChannel<T, 1, P> "
+                  "(a rendezvous writer cannot wait for an ALT reader without blocking)");
 private:
-    AltChanSyncBase sync_base;
-    internal::ChanInGuard  res_in_guard;
-    internal::ChanOutGuard res_out_guard; 
+    RendezvousCore core_{sizeof(T)};
 
 public:
-    RendezvousChannel() 
-        : res_in_guard(&sync_base, nullptr, sizeof(T)),
-          res_out_guard(&sync_base, nullptr, sizeof(T)) {}
+    RendezvousChannel() = default;
+    ~RendezvousChannel() override = default;
+    RendezvousChannel(const RendezvousChannel&) = delete;
+    RendezvousChannel& operator=(const RendezvousChannel&) = delete;
 
-    virtual ~RendezvousChannel() override = default;
+    bool space_available() override { return core_.space_available(); }
+    bool pending() override { return core_.pending(); }
 
-    // --- Core Contract Overrides ---
+    void input(T* const dest) override { core_.input(dest); }
+    void output(const T* const source) override { core_.output(source); }
 
-    /**
-     * @brief In Rendezvous, space is available only if a receiver is waiting.
-     * UNLESS the policy is non-blocking, in which case we are "always ready" 
-     * because we'll just drop the data if no one is there.
-     */
-    bool space_available() override {
-        if constexpr (P != csp::BufferPolicy::Block) return true;
-        
-        bool ready = false;
-        if (xSemaphoreTake(sync_base.getMutex(), 0) == pdTRUE) {
-            ready = (sync_base.getWaitingInTask() != nullptr) || 
-                    (sync_base.getAltInScheduler() != nullptr);
-            xSemaphoreGive(sync_base.getMutex());
-        }
-        return ready;
+    internal::Guard* getInputGuard(GuardSlot& slot, T& dest) override {
+        return slot.emplace<ChanInGuard>(&core_, static_cast<void*>(&dest));
+    }
+    internal::Guard* getOutputGuard(GuardSlot& slot, const T& source) override {
+        return slot.emplace<ChanOutGuard>(&core_, static_cast<const void*>(&source));
     }
 
-    bool pending() override {
-        bool has_partner = false;
-        if (xSemaphoreTake(sync_base.getMutex(), 0) == pdTRUE) {
-            has_partner = (sync_base.getWaitingInTask() != nullptr) || 
-                          (sync_base.getWaitingOutTask() != nullptr) ||
-                          (sync_base.getAltInScheduler() != nullptr) ||
-                          (sync_base.getAltOutScheduler() != nullptr);
-            xSemaphoreGive(sync_base.getMutex());
-        }
-        return has_partner;
-    }
-
-    // --- Blocking Input (Receiver) ---
-    // Receiver always blocks in Rendezvous, regardless of policy.
-    void input(T* const dest) override {
-        xTaskNotifyStateClear(NULL);
-
-        if (xSemaphoreTake(sync_base.getMutex(), portMAX_DELAY) == pdTRUE) {
-            if (sync_base.tryHandshake((void*)dest, sizeof(T), false)) {
-                xSemaphoreGive(sync_base.getMutex());
-                return; 
-            }
-
-            if (sync_base.getAltOutScheduler() != nullptr) {
-                sync_base.getAltOutScheduler()->wakeUp(sync_base.getAltOutBit());
-            }
-
-            sync_base.registerWaitingTask((void*)dest, false);
-            xSemaphoreGive(sync_base.getMutex());
-        }
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    }
-
-    // --- Policy-Aware Output (Sender) ---
-    void output(const T* const source) override {
-        xTaskNotifyStateClear(NULL);
-
-        if (xSemaphoreTake(sync_base.getMutex(), portMAX_DELAY) == pdTRUE) {
-            // 1. Try immediate handshake (Standard or ALT reader)
-            if (sync_base.getWaitingInTask() != nullptr) {
-                sync_base.tryHandshake((void*)const_cast<T*>(source), sizeof(T), true);
-                xSemaphoreGive(sync_base.getMutex());
-                return; 
-            }
-
-            if (sync_base.getAltInScheduler() != nullptr) {
-                sync_base.getAltInScheduler()->wakeUp(sync_base.getAltInBit());
-                // In Rendezvous, we still block until they 'activate' the ALT
-            } 
-
-            // 2. Policy Check: If we reach here, no receiver was immediately ready.
-            if constexpr (P != csp::BufferPolicy::Block) {
-                // Non-blocking policy: Drop the data and exit.
-                xSemaphoreGive(sync_base.getMutex());
-                return; 
-            }
-
-            // 3. Blocking Path: Register and wait
-            sync_base.registerWaitingTask((void*)const_cast<T*>(source), true);
-            xSemaphoreGive(sync_base.getMutex());
-        }
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    }
-
-    // --- ISR Output ---
-    bool putFromISR(const T& data) override {
-        bool success = false;
-        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-        UBaseType_t uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
-
-        if (sync_base.getWaitingInTask() != nullptr) {
-            std::memcpy(sync_base.getNonAltInDataPtr(), &data, sizeof(T));
-            TaskHandle_t toWake = sync_base.getWaitingInTask();
-            sync_base.clearWaitingIn();
-            vTaskNotifyGiveFromISR(toWake, &xHigherPriorityTaskWoken);
-            success = true;
-        } 
-        else if (sync_base.getAltInScheduler() != nullptr) {
-            sync_base.getAltInScheduler()->wakeUp(sync_base.getAltInBit());
-            success = true; 
-        }
-        else if constexpr (P != csp::BufferPolicy::Block) {
-            // Non-blocking ISR: Treat "dropped" as "handled successfully"
-            success = true;
-        }
-
-        taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
-        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-        return success;
-    }
-
-    virtual internal::Guard* getInputGuard(T& dest) override {
-        res_in_guard.updateBuffer(&dest); 
-        return &res_in_guard;
-    }
-    
-    virtual internal::Guard* getOutputGuard(const T& source) override { 
-        res_out_guard.updateBuffer(const_cast<T*>(&source));
-        return &res_out_guard; 
-    }
-
-    void beginExtInput(T* const dest) override {}
+    void beginExtInput(T* const /*dest*/) override {}
     void endExtInput() override {}
 };
 

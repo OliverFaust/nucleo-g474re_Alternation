@@ -1,7 +1,8 @@
-// Required headers for CMSIS-RTOS V2 and FreeRTOS
-//#include "cmsis_os2.h" 
-#include "FreeRTOS.h"
-#include "task.h" 
+// FreeRTOS.h/task.h were included here but unused -- everything below
+// that would have needed them is inside the dead (fully commented-out)
+// ThreadFuncWrapper block; removed as part of making this library's
+// headers backend-agnostic (an unconditional include here would have
+// broken compilation on any CMSIS-RTOS2 backend other than FreeRTOS).
 
 // --- Conceptual CSP Classes (Forward Declarations) ---
 // These declarations allow the wrapper to interact with the C++ objects.

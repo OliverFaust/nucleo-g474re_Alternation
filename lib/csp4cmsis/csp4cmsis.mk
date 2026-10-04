@@ -7,7 +7,10 @@ CSP4CMSIS_DIR = $(LIBRARIES_ROOT)/csp4cmsis
 CSP4CMSIS_ASMSRCDIR    = $(CSP4CMSIS_DIR)/src
 CSP4CMSIS_CSRCDIR      = $(CSP4CMSIS_DIR)/src
 CSP4CMSIS_CXXSRCSDIR   = $(CSP4CMSIS_DIR)/src
-CSP4CMSIS_INCDIR       = $(CSP4CMSIS_DIR)/inc $(CSP4CMSIS_DIR)/inc/csp
+# inc/ only: applications include "csp/csp4cmsis.h", and the library's own
+# headers include each other from their directory. inc/csp on the search path
+# would make <time.h> find csp/time.h instead of the C library's.
+CSP4CMSIS_INCDIR       = $(CSP4CMSIS_DIR)/inc
 
 # find all the source files in the target directories
 CSP4CMSIS_CSRCS = $(call get_csrcs, $(CSP4CMSIS_CSRCDIR))

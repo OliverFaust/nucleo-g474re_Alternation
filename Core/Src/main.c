@@ -115,6 +115,9 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  /* Unbuffered stdout: newlib's printf() would otherwise malloc() a 1 KB stdout buffer on first
+     use (measured: 1032 B). With this, nothing in the program allocates heap memory. */
+  setvbuf(stdout, NULL, _IONBF, 0);
 
   /* USER CODE END 2 */
 
