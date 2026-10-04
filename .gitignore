@@ -21,6 +21,8 @@ build/
 
 # CubeIDE generated
 *.launch
+# Rewritten by CubeIDE on every import (machine-specific env-hash); recreated automatically
+.settings/language.settings.xml
 
 # System files
 .DS_Store
