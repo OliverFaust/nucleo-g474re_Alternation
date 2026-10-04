@@ -44,8 +44,11 @@ Welcome to STM32 world !
 [Receiver] SUCCESS: 2000000 messages verified heap-free.
 ```
 
-## License
-MIT License
+## License and Declaration
+
+MIT License – see the `LICENSE` file. CSP4CMSIS: MIT License, `lib/csp4cmsis/LICENSE`.
+
+Development of this project utilizes AI coding assistants for boilerplate generation, unit test creation, and architectural drafting. All core logic is manually reviewed and verified.
 
 ## Acknowledgments
 - STMicroelectronics for the HAL library
