@@ -1,5 +1,7 @@
 #include "application.h"
 
+#include "cmsis_os2.h"
+#include "FreeRTOS.h"  // StaticTask_t: the control block of a statically created thread
 #include "csp/csp4cmsis.h"
 
 #include <cstdio>
@@ -9,9 +11,6 @@
 #define CHECK_INTERVAL 10000
 #define MAX_TOTAL_MESSAGES (TOTAL_MESSAGES_PER_SENDER * 2)
 
-// MainApp_Task is a plain FreeRTOS task, not a CSProcess, so its stack
-// size is set explicitly here rather than via CSProcessStatic<N>.
-#define MAIN_APP_STACK_WORDS 2048
 
 using namespace csp;
 
@@ -48,7 +47,7 @@ class Sender: public CSProcessStatic < 256 > {
     }
     printf("[Sender %d] Finished.\r\n", id);
     while (true) {
-      vTaskDelay(portMAX_DELAY);
+      SleepFor(osWaitForever);  // done: sleep for ever
     }
   }
 };
@@ -64,7 +63,7 @@ class Receiver: public CSProcessStatic < 512 > {
   }
 
   void run() override {
-    vTaskDelay(pdMS_TO_TICKS(10));
+    SleepFor(Milliseconds(10).to_ticks());
     printf("[Receiver] Task running. Using Resident-Guard ALT.\r\n");
 
     Message msgA, msgB;
@@ -73,7 +72,10 @@ class Receiver: public CSProcessStatic < 512 > {
     int next_seqB = 0;
     bool error_found = false;
 
-    // alt borrows guards that live inside chan_A and chan_B.
+    // External choice over two input guards. The guards live in the channel ends inA and inB
+    // (no allocation). fairSelect() checks the guards starting after the last selected one, and
+    // the first ready guard wins, so neither sender can starve the other. Exactly one guard is
+    // selected per call, and its message has been transferred when fairSelect() returns.
     Alternative alt(inA | msgA, inB | msgB);
 
     while (count < MAX_TOTAL_MESSAGES) {
@@ -106,16 +108,28 @@ class Receiver: public CSProcessStatic < 512 > {
       printf("[Receiver] SUCCESS: %d messages verified heap-free.\r\n", count);
     }
     while (true) {
-      vTaskDelay(portMAX_DELAY);
+      SleepFor(osWaitForever);  // done: sleep for ever
     }
   }
 };
 
-static TaskHandle_t s_main_app_task_handle = NULL;
+// Start order. MainApp runs at a higher priority than the network it launches, so
+// Run(..., StaticNetwork) only creates the three process threads and returns: none of them
+// can preempt MainApp, and they first run after MainApp has printed its messages and exited.
+// All stay below CubeMX's defaultTask (osPriorityNormal).
+static constexpr osPriority_t MAIN_APP_PRIORITY = osPriorityBelowNormal;
+static constexpr osPriority_t NETWORK_PRIORITY  = osPriorityLow;
+
+// MainApp's stack and control block are static: creating the thread takes no heap.
+// CMSIS-RTOS2 counts the stack in bytes: 384 words = 1.5 KB. Measured on the NUCLEO-G474RE:
+// MainApp uses 620 B (Debug, -O0) and 308 B (Release, -Os) of it.
+alignas(8) static uint32_t mainAppStack[384];
+static StaticTask_t mainAppControlBlock;
 
 // --- 3. The Main Application Task ---
-void MainApp_Task(void * params) {
-  vTaskDelay(pdMS_TO_TICKS(10));
+void MainApp_Task(void * argument) {
+  (void) argument;
+  osDelay(10);
 
   printf("\r\n--- Launching CSP Static Network (Zero-Heap) ---\r\n");
 
@@ -127,16 +141,22 @@ void MainApp_Task(void * params) {
   static Sender sB(chan_B.writer(), 2);
   static Receiver r1(chan_A.reader(), chan_B.reader());
 
-  Run(InParallel(sA, sB, r1), ExecutionMode::StaticNetwork);
+  Run(InParallel(sA, sB, r1), ExecutionMode::StaticNetwork, NETWORK_PRIORITY);
 
-  printf("*** MainApp_Task: Run() returned, network finished. Terminating. ***\r\n");
-  vTaskDelete(NULL);
+  // StaticNetwork: Run() has created the processes and returns at once; they run on their own.
+  printf("*** MainApp_Task: network started. Terminating. ***\r\n");
+  osThreadExit();
 }
 
 void csp_app_main_init(void) {
-  BaseType_t status = xTaskCreate(MainApp_Task, "MainApp", MAIN_APP_STACK_WORDS, NULL,
-    tskIDLE_PRIORITY + 3, & s_main_app_task_handle);
-  if (status != pdPASS) {
+  osThreadAttr_t attr = {};
+  attr.name       = "MainApp";
+  attr.stack_mem  = mainAppStack;
+  attr.stack_size = sizeof(mainAppStack);
+  attr.cb_mem     = &mainAppControlBlock;
+  attr.cb_size    = sizeof(mainAppControlBlock);
+  attr.priority   = MAIN_APP_PRIORITY;
+  if (osThreadNew(MainApp_Task, NULL, &attr) == NULL) {
     printf("ERROR: MainApp_Task creation failed!\r\n");
   }
 }

@@ -68,7 +68,7 @@
 #define configTICK_RATE_HZ                       ((TickType_t)1000)
 #define configMAX_PRIORITIES                     ( 56 )
 #define configMINIMAL_STACK_SIZE                 ((uint16_t)128)
-#define configTOTAL_HEAP_SIZE                    ((size_t)1024*30)
+#define configTOTAL_HEAP_SIZE                    ((size_t)1024)
 #define configMAX_TASK_NAME_LEN                  ( 16 )
 #define configUSE_TRACE_FACILITY                 1
 #define configUSE_16_BIT_TICKS                   0
@@ -92,6 +92,9 @@
 #define configTIMER_TASK_PRIORITY                ( 2 )
 #define configTIMER_QUEUE_LENGTH                 10
 #define configTIMER_TASK_STACK_DEPTH             256
+
+/* The following flag must be enabled only when using newlib */
+#define configUSE_NEWLIB_REENTRANT          1
 
 /* CMSIS-RTOS V2 flags */
 #define configUSE_OS2_THREAD_SUSPEND_RESUME  1
@@ -151,7 +154,9 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 /* Normal assert() semantics without relying on the provision of an assert.h
 header file. */
 /* USER CODE BEGIN 1 */
-#define configASSERT( x ) if ((x) == 0) {taskDISABLE_INTERRUPTS(); for( ;; );}
+/* Report a failed assertion (file and line) before halting; CubeMX's default halts silently. */
+void vAssertCalled(const char *file, int line);
+#define configASSERT( x ) if ((x) == 0) { vAssertCalled(__FILE__, __LINE__); }
 /* USER CODE END 1 */
 
 /* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS
@@ -165,6 +170,9 @@ standard names. */
 
 /* USER CODE BEGIN Defines */
 /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */
+/* configTOTAL_HEAP_SIZE is 1024 (set in the .ioc): every thread is created statically and the
+   FreeRTOS heap is never used (0 allocations measured on the NUCLEO-G474RE, Debug and Release).
+   1 KB still fits one small dynamically created thread (128-word stack + TCB). */
 /* USER CODE END Defines */
 
 #endif /* FREERTOS_CONFIG_H */

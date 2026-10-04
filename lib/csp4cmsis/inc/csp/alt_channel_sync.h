@@ -1,140 +1,116 @@
 #ifndef ALT_CHANNEL_SYNC_H
 #define ALT_CHANNEL_SYNC_H
 
-#include "FreeRTOS.h"
-#include "semphr.h"
-#include "alt.h"      
-#include <cstdio> 
+// =============================================================================
+// Rendezvous core: one-winner ALT with re-verification ("OWRV", 2.0).
+// Model: docs/formal/alt_one_winner.csp, alt_owrv_extended.csp (ProB-checked).
+//
+//  * All channel state is protected by CSP critical sections (csp_critical.h),
+//    never by an RTOS mutex; no RTOS call is made inside a section.
+//  * A partner NEVER completes a communication on behalf of an ALT:
+//      - a plain (blocking) writer/reader that finds no partner registers as
+//        PENDING (its data stays in its own buffer) and blocks until the
+//        other side has copied and released it;
+//      - ALT-vs-ALT: whoever finds the other ALT registered and claimable
+//        claims BOTH state words in one critical section; the READER side
+//        then copies from the writer's buffer and releases the writer.
+//  * The element copy happens outside the critical section: the partner is
+//    blocked (pending or claimed), so both buffers are stable.
+//  * At most one ALTing process per channel end (fatal otherwise); any number
+//    of plain writers/readers (serialised per end by a counting semaphore).
+//  * Only tasks use rendezvous channels (no ISR path; ISR -> process goes
+//    through buffered channels).
+//
+// Thread flags: RENDEZVOUS_FLAG (bit 0) releases a blocked plain partner or
+// an ALT writer waiting for the reader's copy; ALT wakeups use bits 8..23.
+// =============================================================================
+
+#include "cmsis_os2.h"
+#include "alt.h"
+#include "channel_base.h"
+#include "csp_semaphore.h"
+#include <cstddef>
+
+/// Rendezvous/signal channels use the one-winner protocol with
+/// re-verification (2.0). Undefined in 1.x.
+#define CSP4CMSIS_ALT_PROTOCOL_OWRV 1
 
 namespace csp::internal {
 
-    class AltScheduler;
+    static constexpr uint32_t RENDEZVOUS_FLAG = 0x00000001U;
 
-    /**
-     * @brief Represents an Alternative (ALT) operation currently waiting on a channel.
-     */
-    struct WaitingAlt {
-        AltScheduler* alt_ptr;
-        EventBits_t assigned_bit;
-        void* data_ptr;
-        size_t data_size;
-
-        WaitingAlt() : alt_ptr(nullptr), assigned_bit(0), data_ptr(nullptr), data_size(0) {}
-
-        void set(AltScheduler* a, EventBits_t b, void* d, size_t s) {
-            alt_ptr = a;
-            assigned_bit = b;
-            data_ptr = d;
-            data_size = s;
-        }
-
-        void clear() {
-            alt_ptr = nullptr;
-            assigned_bit = 0;
-            data_ptr = nullptr;
-            data_size = 0;
-        }
-
-        bool isActive() const { return alt_ptr != nullptr; }
+    /// One end of a rendezvous channel (in = reader side, out = writer side).
+    struct RvEnd {
+        // plain (blocking) process waiting on this end
+        osThreadId_t   pend_thread = nullptr;
+        void*          pend_data   = nullptr;
+        volatile bool  pend_done   = false;     // set by the side that copied
+        // ALT registration on this end
+        AltScheduler*  alt      = nullptr;
+        uint32_t       alt_flag = 0;
+        void*          alt_data = nullptr;
+        // serialises plain operations on this end (one pending at a time)
+        CspSemaphore   serial;
     };
 
-    /**
-     * @brief Base synchronization primitive for channels supporting ALT.
-     * Modified to provide explicit partner-status checks for sampling policies.
-     */
-    class AltChanSyncBase {
-    protected:
-        SemaphoreHandle_t mutex; 
-        
-        // Slots for processes currently blocked in an Alternative (ALT) select
-        WaitingAlt waiting_in_alt;
-        WaitingAlt waiting_out_alt;
+    class RendezvousCore {
+    private:
+        RvEnd in_;
+        RvEnd out_;
+        // ALT-vs-ALT pair in progress (at most one: one ALT per end)
+        const void*   pair_src_    = nullptr;
+        osThreadId_t  pair_writer_ = nullptr;
+        volatile bool pair_done_   = false;
+        size_t        size_;
 
-        // Slots for standard blocking processes (input() / output())
-        TaskHandle_t waiting_in_task;
-        TaskHandle_t waiting_out_task;
-        void* non_alt_in_data_ptr;
-        const void* non_alt_out_data_ptr;
-
+        static void waitDone(volatile bool& done);
     public:
-        AltChanSyncBase();
-        virtual ~AltChanSyncBase();
+        explicit RendezvousCore(size_t element_size);
+        RendezvousCore(const RendezvousCore&) = delete;
+        RendezvousCore& operator=(const RendezvousCore&) = delete;
 
-        /**
-         * @brief Checks if a partner is ready to communicate right now.
-         * Essential for KeepNewest/KeepOldest policies in Rendezvous.
-         */
-        bool hasReaderWaiting() const {
-            return (waiting_in_task != nullptr) || waiting_in_alt.isActive();
-        }
+        // plain (blocking) operations
+        void output(const void* src);
+        void input(void* dst);
 
-        bool hasWriterWaiting() const {
-            return (waiting_out_task != nullptr) || waiting_out_alt.isActive();
-        }
+        // ALT guard operations (flag = the guard's thread flag in `alt`)
+        bool inEnable(AltScheduler* alt, uint32_t flag, void* dst);
+        bool inDisable(AltScheduler* alt);
+        bool inActivate(AltScheduler* alt, uint32_t flag, void* dst);
+        bool outEnable(AltScheduler* alt, uint32_t flag, const void* src);
+        bool outDisable(AltScheduler* alt);
+        bool outActivate(AltScheduler* alt, uint32_t flag, const void* src);
 
-        // Perform or verify a rendezvous
-        bool tryHandshake(void* data_ptr, size_t size, bool is_writer);
-        
-        // Register a standard task for blocking I/O
-        void registerWaitingTask(void* data_ptr, bool is_writer);
-        
-        void clearWaitingIn() { waiting_in_task = nullptr; non_alt_in_data_ptr = nullptr; }
-        void clearWaitingOut() { waiting_out_task = nullptr; non_alt_out_data_ptr = nullptr; }
-
-        // Getters
-        SemaphoreHandle_t getMutex() { return mutex; }
-        TaskHandle_t getWaitingInTask() const { return waiting_in_task; }
-        TaskHandle_t getWaitingOutTask() const { return waiting_out_task; }
-        void* getNonAltInDataPtr() const { return non_alt_in_data_ptr; }
-        const void* getNonAltOutDataPtr() const { return non_alt_out_data_ptr; }
-        
-        AltScheduler* getAltInScheduler() const { return waiting_in_alt.alt_ptr; }
-        EventBits_t   getAltInBit() const       { return waiting_in_alt.assigned_bit; }
-        AltScheduler* getAltOutScheduler() const { return waiting_out_alt.alt_ptr; }
-        EventBits_t   getAltOutBit() const       { return waiting_out_alt.assigned_bit; }
-
-        WaitingAlt& getWaitingInAlt() { return waiting_in_alt; }
-        WaitingAlt& getWaitingOutAlt() { return waiting_out_alt; }
+        // informational (racy outside the channel's own use)
+        bool pending();
+        bool space_available();
     };
 
-    // =============================================================
-    // Guards: Interfaces between Channels and the AltScheduler
-    // =============================================================
-
-    /**
-     * @brief Input Guard for Rendezvous channels.
-     */
     class ChanInGuard : public Guard {
-    private: 
-        AltChanSyncBase* parent_channel;
-        void* user_data_dest; 
-        size_t data_size;
+    private:
+        RendezvousCore* core;
+        void*           dest;
+        AltScheduler*   alt  = nullptr;
+        uint32_t        flag = 0;
     public:
-        ChanInGuard(AltChanSyncBase* parent, void* dest = nullptr, size_t size = 0) 
-            : parent_channel(parent), user_data_dest(dest), data_size(size) {}
-        
-        bool enable(AltScheduler* alt, EventBits_t bit) override;
-        bool disable() override;
-        void activate() override;
-        void updateBuffer(void* new_dest) { user_data_dest = new_dest; }
+        ChanInGuard(RendezvousCore* c, void* d) : core(c), dest(d) {}
+        bool enable(AltScheduler* a, uint32_t f) override { alt = a; flag = f; return core->inEnable(a, f, dest); }
+        bool disable() override { return core->inDisable(alt); }
+        bool activate() override { return core->inActivate(alt, flag, dest); }
     };
 
-    /**
-     * @brief Output Guard for Rendezvous channels.
-     */
-    class ChanOutGuard : public Guard { 
-    private: 
-        AltChanSyncBase* parent_channel;
-        const void* user_data_source; 
-        size_t data_size;
+    class ChanOutGuard : public Guard {
+    private:
+        RendezvousCore* core;
+        const void*     source;
+        AltScheduler*   alt  = nullptr;
+        uint32_t        flag = 0;
     public:
-        ChanOutGuard(AltChanSyncBase* parent, const void* src = nullptr, size_t size = 0) 
-            : parent_channel(parent), user_data_source(src), data_size(size) {}
-        
-        bool enable(AltScheduler* alt, EventBits_t bit) override;
-        bool disable() override;
-        void activate() override;
-        void updateBuffer(const void* new_src) { user_data_source = (void*)new_src; }
+        ChanOutGuard(RendezvousCore* c, const void* s) : core(c), source(s) {}
+        bool enable(AltScheduler* a, uint32_t f) override { alt = a; flag = f; return core->outEnable(a, f, source); }
+        bool disable() override { return core->outDisable(alt); }
+        bool activate() override { return core->outActivate(alt, flag, source); }
     };
-}
+
+} // namespace csp::internal
 #endif

@@ -1,0 +1,14 @@
+2.0.1 Release (before the final right-sizing commit; same code otherwise): last console lines missing.
+Test copy with a "done" flag set just before the SUCCESS printf and a counter of characters that
+the BSP's __io_putchar() drops with HAL_BUSY (test only), 3 runs:
+run 1: done=1 chars dropped=75 of 8487 | SUCCESS line: 1, Verified lines: 200, Starting: 1, Finished: 0
+run 2: done=1 chars dropped=75 of 8487 | SUCCESS line: 1, Verified lines: 200, Starting: 1, Finished: 0
+run 3: done=1 chars dropped=75 of 8487 | SUCCESS line: 1, Verified lines: 200, Starting: 1, Finished: 0
+75 = "[Sender 2] Starting sequence.\r\n" (31) + "[Sender 1] Finished.\r\n" (22) + "[Sender 2] Finished.\r\n" (22).
+Uninstrumented image whose log lacked the 2 000 000 line and SUCCESS: thread states read over SWD after
+the run (TCB xStateListItem.pvContainer, ucNotifyState):
+r1 (Receiver): list=delayed notify-state=0
+sA (Sender 1): list=delayed notify-state=0
+sB (Sender 2): list=delayed notify-state=0
+All three are in their final SleepFor(osWaitForever) loop: the Receiver passed its loop (2 000 000
+messages) and printed SUCCESS; only the console output was lost. No hang.

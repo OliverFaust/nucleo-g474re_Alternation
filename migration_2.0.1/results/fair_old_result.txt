@@ -1,0 +1,5 @@
+first instrumented image (without the longest-run position counters):
+done=1 selections=2000000 A=1000000 B=1000000 switches=1986706 longest-run=3484 A-per-10000-block min=4975 max=6726 time=128842 ms
+instrumented image with position counters, two runs:
+done=1 selections=2000000 A=1000000 B=1000000 switches=1985838 longest-run=40 A-per-10000-block min=4999 max=5019 time=127483 ms longest-run-ended-at=2000000 guard=0 runs>=100: 0
+done=1 selections=2000000 A=1000000 B=1000000 switches=1985838 longest-run=40 A-per-10000-block min=4999 max=5019 time=127483 ms longest-run-ended-at=2000000 guard=0 runs>=100: 0
