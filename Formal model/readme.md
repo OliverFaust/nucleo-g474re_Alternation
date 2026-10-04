@@ -2,7 +2,7 @@
 
 This directory contains the formal **Communicating Sequential Processes (CSP)** model for the Alternation pattern. The specification mathematically defines how a process network manages **External Choice** (`[]`), allowing a centralized receiver to dynamically service multiple independent senders without polling or busy-waiting. The CSP model was verified with [ProB](https://prob.hhu.de/). 
 
-While the primary repository implements this pattern using the C++ `Alternative` construct and hardware-accelerated FreeRTOS event groups (utilizing the ARM `__CLZ` instruction), this formal abstraction strictly evaluates the logical integrity, fairness, and concurrency bounds of the multiplexing architecture.
+The repository implements this pattern with the C++ `Alternative` construct of CSP4CMSIS 2.0 (a one-winner protocol on CMSIS-RTOS2 thread flags: exactly one ready guard is selected per `fairSelect()`, together with its own message). This formal abstraction evaluates the logical integrity and concurrency of the multiplexing architecture. CSP's external choice `[]` does not prescribe which of several ready channels is taken, so the model covers `priSelect()` and `fairSelect()` alike; the fairness of `fairSelect()` (serving ready guards in turn) is a property of the implementation, not of this model.
 
 ## Network Architecture
 
