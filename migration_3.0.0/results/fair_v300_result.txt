@@ -1,0 +1,2 @@
+Debug: done=1 selections=2000000 A=1000000 B=1000000 switches=1999999 longest-run=1 A-per-10000-block min=5000 max=5000 time=103306 ms longest-run-ended-at=0 guard=0 runs>=100: 0 error_found=0
+Release: done=1 selections=2000000 A=1000000 B=1000000 switches=1999999 longest-run=1 A-per-10000-block min=5000 max=5000 time=52989 ms longest-run-ended-at=0 guard=0 runs>=100: 0 error_found=0
