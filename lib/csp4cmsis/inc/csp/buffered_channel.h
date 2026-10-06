@@ -53,15 +53,15 @@
 //    For small elements (<= 64 bytes) this is comparable to an RTOS queue
 //    operation (FreeRTOS also copies inside its own critical section).
 //    csp::IsrChanout<T> (the only way to call putFromISR(), obtained from
-//    SamplingBufferedChannel::isrWriter()) enforces this at compile time:
+//    BufferedChannel::isrWriter()) enforces this at compile time:
 //    sizeof(T) <= CSP4CMSIS_ISR_MAX_ELEMENT_SIZE (default 64, public_channel.h;
 //    raise it with -D if the latency is acceptable). Task-side operations
 //    are not limited.
 //    For large elements, do NOT buffer the payload: keep payloads in a
 //    statically allocated pool and send an index or pointer instead, e.g.
 //      static Frame pool[N];                              // payloads
-//      SamplingBufferedChannel<uint8_t, N> filled;        // ISR -> task: index
-//      SamplingBufferedChannel<uint8_t, N> free_slots;    // task -> ISR: index
+//      BufferedChannel<uint8_t, N> filled;        // ISR -> task: index
+//      BufferedChannel<uint8_t, N> free_slots;    // task -> ISR: index
 //    so the masked copy is one byte; ownership of pool[i] moves with its
 //    index. (An ISR cannot block on input(), so it must only use indices it
 //    already owns -- e.g. a pre-assigned ping-pong pair -- until a
@@ -78,10 +78,6 @@
 #include <cstring>
 #include <cstddef>
 #include <type_traits>
-
-/// API generation of BufferedChannel (2 = static ring buffer, SIZE template
-/// parameter). Undefined in 1.x.
-#define CSP4CMSIS_BUFFERED_CHANNEL_API 2
 
 namespace csp::internal {
 

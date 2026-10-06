@@ -4,9 +4,8 @@
 #include "cmsis_os2.h"
 #include "csp_rtos_static.h"
 #include <stddef.h>
-#include <initializer_list>
 #include <type_traits>
-#include "time.h"
+#include "csp_time.h"
 #include "csp_fatal.h"
 
 // =============================================================================
@@ -157,36 +156,45 @@ namespace csp {
 
     } // namespace internal
 
+    class Alternative;
+    namespace internal { struct Access; }   // test code only (bc_tests.cpp)
+
     /**
-     * @brief Glue logic for Pipe Syntax (chan | msg).
+     * @brief Result of `in | var` and `out | value`: a channel end bound to the
+     * variable an ALT reads into or writes from. Pass it to Alternative.
      */
     template <typename T, typename ChanType>
-    struct ChannelBinding {
-        ChanType& channel;
-        T& data_ref;
-
+    class ChannelBinding {
+    public:
         ChannelBinding(ChanType& c, T& d) : channel(c), data_ref(d) {}
-
+    private:
+        friend class Alternative;
         internal::Guard* getInternalGuard() const {
             return channel.getGuard(data_ref);
         }
+        ChanType& channel;
+        T& data_ref;
     };
 
     /**
-     * @brief Public Wrapper for Guards.
+     * @brief Base of the guards that are objects (RelTimeoutGuard).
      */
     class Guard {
     public:
-        internal::Guard* internal_guard_ptr = nullptr;
         virtual ~Guard() = default;
     protected:
-        Guard(internal::Guard* internal_ptr) : internal_guard_ptr(internal_ptr) {}
+        explicit Guard(internal::Guard* internal_ptr) : internal_guard_ptr(internal_ptr) {}
+    private:
+        friend class Alternative;
+        friend struct internal::Access;
+        internal::Guard* internal_guard_ptr = nullptr;
     };
 
     /**
      * @brief Relative timeout for an Alternative: selected when `delay`
-     * ticks have passed since select() started and no guard listed before
-     * it is ready. Plain data, no RTOS object.
+     * has passed since select() started and no guard listed before it is
+     * ready. Plain data, no RTOS object. Time(0) is ready at once; Forever is
+     * the longest delay (0xFFFFFFFE ticks).
      */
     class RelTimeoutGuard : public Guard {
     private:
@@ -195,7 +203,7 @@ namespace csp {
         RelTimeoutGuard(csp::Time delay)
             : Guard(&timer_storage), timer_storage(delay) {}
         ~RelTimeoutGuard() override = default;
-        // internal_guard_ptr points into this object: not copyable/movable.
+        // The guard pointer points into this object: not copyable/movable.
         RelTimeoutGuard(const RelTimeoutGuard&) = delete;
         RelTimeoutGuard& operator=(const RelTimeoutGuard&) = delete;
     };
@@ -226,9 +234,6 @@ namespace csp {
             (addBinding(bindings), ...);
         }
 
-        Alternative(std::initializer_list<internal::Guard*> guard_list);
-        Alternative(std::initializer_list<csp::Guard*> guard_list);
-
         /**
          * @brief Priority Select: Always checks guards in the order they were added.
          */
@@ -240,31 +245,28 @@ namespace csp {
         int fairSelect();
 
         // --- Binding Helpers ---
+        // At most MAX_GUARDS (16) guards; a 17th is a fatal error (2.1.0;
+        // 2.0.x ignored it silently).
 
         template <typename T>
         void addBinding(const ChannelBinding<T, Chanin<T>>& b) {
-            if (num_guards < MAX_GUARDS) {
-                internal_guards[num_guards++] = b.getInternalGuard();
-            }
+            addBinding(b.getInternalGuard());
         }
 
         template <typename T>
         void addBinding(const ChannelBinding<const T, Chanout<T>>& b) {
-            if (num_guards < MAX_GUARDS) {
-                internal_guards[num_guards++] = b.getInternalGuard();
-            }
+            addBinding(b.getInternalGuard());
         }
 
         void addBinding(RelTimeoutGuard& tg) {
-            if (num_guards < MAX_GUARDS) {
-                internal_guards[num_guards++] = tg.internal_guard_ptr;
-            }
+            addBinding(tg.internal_guard_ptr);
         }
 
+    private:
+        friend struct internal::Access;
         void addBinding(internal::Guard* g) {
-            if (num_guards < MAX_GUARDS) {
-                internal_guards[num_guards++] = g;
-            }
+            if (num_guards >= MAX_GUARDS) internal::fatal("CSP4CMSIS: Alternative: more than 16 guards");
+            internal_guards[num_guards++] = g;
         }
     };
 }

@@ -1,12 +1,12 @@
 // --- csp_wrapper.cpp ---
 
-#include "csp/run.h" // Includes the declaration of ThreadFuncWrapper and the definition of csp::TaskCtx
+#include "csp/run.h" // ThreadFuncWrapper, csp::internal::TaskCtx
 
 // Define the function using the definition that was removed from the header.
 extern "C" {
     void ThreadFuncWrapper(void* pvParameters) {
         // Use the fully qualified name to ensure proper scope resolution
-        csp::TaskCtx* ctx = static_cast<csp::TaskCtx*>(pvParameters);
+        csp::internal::TaskCtx* ctx = static_cast<csp::internal::TaskCtx*>(pvParameters);
 
         // 1. Run the process logic
         ctx->process->run();

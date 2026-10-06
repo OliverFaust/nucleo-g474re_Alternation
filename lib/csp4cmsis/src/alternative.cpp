@@ -107,20 +107,6 @@ namespace csp {
 // Alternative Implementation
 // =============================================================
 
-Alternative::Alternative(std::initializer_list<internal::Guard*> list) {
-    num_guards = 0;
-    for (auto* g : list) {
-        if (num_guards < MAX_GUARDS) internal_guards[num_guards++] = g;
-    }
-}
-
-Alternative::Alternative(std::initializer_list<Guard*> list) {
-    num_guards = 0;
-    for (auto* g : list) {
-        if (num_guards < MAX_GUARDS) internal_guards[num_guards++] = g->internal_guard_ptr;
-    }
-}
-
 int Alternative::priSelect() {
     return (int)internal_alt.select(internal_guards, num_guards, 0);
 }

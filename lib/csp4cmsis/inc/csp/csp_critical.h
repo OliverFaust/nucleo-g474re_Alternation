@@ -55,6 +55,16 @@
 
 namespace csp::internal {
 
+    // The define is the UNSHIFTED NVIC priority (e.g. 5 with 3 or 4 priority
+    // bits), not FreeRTOS's shifted configMAX_SYSCALL_INTERRUPT_PRIORITY
+    // (e.g. 0x50 or 0xA0): a shifted value would mask nothing. 0 would set
+    // BASEPRI to 0, which masks nothing either.
+    static_assert((CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY) >= 1 &&
+                  (CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY) < (1 << (__NVIC_PRIO_BITS)),
+                  "CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY must be an unshifted NVIC priority, "
+                  "1 .. (1 << __NVIC_PRIO_BITS) - 1, e.g. 5 (not FreeRTOS's shifted "
+                  "configMAX_SYSCALL_INTERRUPT_PRIORITY such as 0x50 or 0xA0)");
+
     // DSB + ISB after raising BASEPRI: the section's first instruction then
     // runs with the new priority in force, without relying on how soon an
     // MSR that raises the execution priority takes effect. Same sequence as

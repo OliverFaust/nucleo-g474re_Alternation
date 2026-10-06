@@ -31,10 +31,6 @@
 #include "csp_semaphore.h"
 #include <cstddef>
 
-/// Rendezvous/signal channels use the one-winner protocol with
-/// re-verification (2.0). Undefined in 1.x.
-#define CSP4CMSIS_ALT_PROTOCOL_OWRV 1
-
 namespace csp::internal {
 
     static constexpr uint32_t RENDEZVOUS_FLAG = 0x00000001U;

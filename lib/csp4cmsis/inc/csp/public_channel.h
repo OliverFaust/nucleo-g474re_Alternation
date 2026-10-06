@@ -13,10 +13,6 @@
 #define CSP4CMSIS_ISR_MAX_ELEMENT_SIZE 64
 #endif
 
-/// ISR writes only through IsrChanout<T> from buffered channels (2.0); rendezvous
-/// and signal channels are Block-only. Undefined in 1.x.
-#define CSP4CMSIS_ISR_WRITER_API 1
-
 namespace csp {
 
 // Forward declarations
@@ -40,25 +36,29 @@ ChannelBinding<const T, Chanout<T>> operator|(Chanout<T>& chan, const T& source)
 // Channel End Wrappers (Chanout / Chanin)
 // =============================================================
 
+/// Writing end of a channel: `out << value` (or out.write(value)) blocks until
+/// the value is taken (rendezvous) or stored (buffered channel, Block policy).
 template <typename T>
 class Chanout {
 private:
     internal::BaseAltChan<T>* internal_ptr;
     internal::GuardSlot guard_slot;   // this end's ALT guard (see GuardSlot)
-public:
-    Chanout(internal::BaseAltChan<T>* ptr) : internal_ptr(ptr) {}
-    
-    void operator<<(const T& data) { internal_ptr->output(&data); }
-    void write(const T& data) { internal_ptr->output(&data); }
-    
+
+    template <typename, typename> friend class ChannelBinding;
+    friend struct internal::Access;
     internal::Guard* getGuard(const T& source) {
         return internal_ptr->getOutputGuard(guard_slot, source);
     }
+public:
+    Chanout(internal::BaseAltChan<T>* ptr) : internal_ptr(ptr) {}
+
+    void operator<<(const T& data) { internal_ptr->output(&data); }
+    void write(const T& data) { internal_ptr->output(&data); }
 };
 
 /**
  * @brief ISR writer end of a buffered channel (the only ISR write path).
- * Obtain it with SamplingBufferedChannel::isrWriter(); rendezvous and signal
+ * Obtain it with BufferedChannel::isrWriter(); rendezvous and signal
  * channels have none (an interrupt cannot wait for a partner).
  * The element is copied with BASEPRI raised, so its size is bounded at
  * compile time by CSP4CMSIS_ISR_MAX_ELEMENT_SIZE.
@@ -77,55 +77,66 @@ public:
     bool putFromISR(const T& data) { return sink->putFromISR(data); }
 };
 
+/// Reading end of a channel: `in >> var` (or in.read(var)) blocks until a value
+/// arrives.
 template <typename T>
 class Chanin {
 private:
     internal::BaseAltChan<T>* internal_ptr;
     internal::GuardSlot guard_slot;   // this end's ALT guard (see GuardSlot)
-public:
-    Chanin(internal::BaseAltChan<T>* ptr) : internal_ptr(ptr) {}
-    
-    void operator>>(T& dest) { internal_ptr->input(&dest); }
-    void read(T& dest) { internal_ptr->input(&dest); }
-    
+
+    template <typename, typename> friend class ChannelBinding;
+    friend struct internal::Access;
     internal::Guard* getGuard(T& dest) {
         return internal_ptr->getInputGuard(guard_slot, dest);
     }
+public:
+    Chanin(internal::BaseAltChan<T>* ptr) : internal_ptr(ptr) {}
+
+    void operator>>(T& dest) { internal_ptr->input(&dest); }
+    void read(T& dest) { internal_ptr->input(&dest); }
 };
 
 // =============================================================
-// Static Channel Containers (v1.1 Sampling API)
+// Channels. Construct them at namespace scope or as function-local statics.
+// Any channel may be shared by several writers and several readers, each
+// with its own writer()/reader() end, using plain << and >>. In an ALT, at
+// most one reader and one writer of a channel may be ALTing (a second ALTing
+// reader or writer is a fatal error).
 // =============================================================
 
 /**
- * @brief Zero-capacity synchronisation primitive (rendezvous).
- * Block policy only: KeepNewest/KeepOldest are rejected at compile time
- * (use SamplingBufferedChannel<T, 1, P> for a "latest value" channel).
- * No ISR writer: interrupts write to buffered channels (isrWriter()).
+ * @brief Rendezvous channel: a write completes when a reader has taken the
+ * value. No buffer, no ISR writer (an interrupt cannot wait for a partner):
+ * interrupts write to a BufferedChannel through isrWriter().
  */
-template <typename T, BufferPolicy P = BufferPolicy::Block>
-class SamplingChannel {
+template <typename T>
+class Channel {
 private:
-    internal::RendezvousChannel<T, P> internal_chan;
+    internal::RendezvousChannel<T, BufferPolicy::Block> internal_chan;
 public:
-    SamplingChannel() = default;
-    
+    Channel() = default;
+    Channel(const Channel&) = delete;
+    Channel& operator=(const Channel&) = delete;
+
     Chanout<T> writer() { return Chanout<T>(&internal_chan); }
     Chanin<T> reader() { return Chanin<T>(&internal_chan); }
 };
 
 /**
- * @brief Buffered Asynchronous Primitive.
- * Decouples timing. Supports Lossy policies (KeepNewest/Oldest).
+ * @brief Buffered channel with a static ring buffer of SIZE elements.
+ * Policy P when the buffer is full: Block (the writer waits; the default),
+ * KeepNewest (the oldest element is overwritten), KeepOldest (the new element
+ * is dropped). isrWriter() is the only way to write from an interrupt.
  */
 template <typename T, size_t SIZE, BufferPolicy P = BufferPolicy::Block>
-class SamplingBufferedChannel {
+class BufferedChannel {
 private:
     internal::BufferedChannel<T, SIZE, P> internal_chan;   // static storage for SIZE elements
 public:
-    SamplingBufferedChannel() = default;
-    SamplingBufferedChannel(const SamplingBufferedChannel&) = delete;
-    SamplingBufferedChannel& operator=(const SamplingBufferedChannel&) = delete;
+    BufferedChannel() = default;
+    BufferedChannel(const BufferedChannel&) = delete;
+    BufferedChannel& operator=(const BufferedChannel&) = delete;
 
     Chanout<T> writer() { return Chanout<T>(&internal_chan); }
     Chanin<T> reader() { return Chanin<T>(&internal_chan); }
@@ -137,55 +148,33 @@ public:
 struct Signal {};
 
 /**
- * @brief Signal channel: a rendezvous that carries no data (csp::Signal).
- * Same protocol as SamplingChannel (OWRV); use reader()/writer() like any
- * channel, e.g. `out << csp::Signal{}`, `in >> s`, `in | s` in an ALT.
+ * @brief Signal channel: a rendezvous that carries no data (csp::Signal):
+ * `out << csp::Signal{}`, `in >> s`, `in | s` in an ALT.
  */
-template <BufferPolicy P = BufferPolicy::Block>
 class SignalChannel {
-    static_assert(P == BufferPolicy::Block,
-                  "SignalChannel: KeepNewest/KeepOldest need a buffer: use SamplingBufferedChannel<csp::Signal, 1, P>");
 private:
-    internal::RendezvousChannel<Signal, P> internal_chan;
+    internal::RendezvousChannel<Signal, BufferPolicy::Block> internal_chan;
 public:
     SignalChannel() = default;
+    SignalChannel(const SignalChannel&) = delete;
+    SignalChannel& operator=(const SignalChannel&) = delete;
+
     Chanout<Signal> writer() { return Chanout<Signal>(&internal_chan); }
     Chanin<Signal> reader() { return Chanin<Signal>(&internal_chan); }
 };
 
-// =============================================================
-// Public Aliases & Legacy Support
-// =============================================================
-
-/**
- * @brief Standard CSP rendezvous channel (Blocking).
- */
-template <typename T>
-using Channel = SamplingChannel<T, BufferPolicy::Block>;
-
-/**
- * @brief Standard CSP buffered channel (Blocking).
- */
-template <typename T, size_t SIZE>
-using BufferedChannel = SamplingBufferedChannel<T, SIZE, BufferPolicy::Block>;
-
-/**
- * @brief Semantic alias for shared input ports.
- */
-template <typename T, BufferPolicy P = BufferPolicy::Block> 
-using Any2OneChannel = SamplingChannel<T, P>;
-
-template <typename T, size_t S, BufferPolicy P = BufferPolicy::Block> 
-using BufferedAny2OneChannel = SamplingBufferedChannel<T, S, P>;
-
-/**
- * @brief Legacy API 1.0 Compatibility Aliases.
- */
-template <typename T, BufferPolicy P = BufferPolicy::Block>
-using One2OneChannel = SamplingChannel<T, P>;
-
-template <typename T, size_t S, BufferPolicy P = BufferPolicy::Block>
-using BufferedOne2OneChannel = SamplingBufferedChannel<T, S, P>;
+namespace internal {
+    /// Access to ALT internals for the regression suite (tests/fvp_sse300).
+    /// Not part of the API.
+    struct Access {
+        template <typename T>
+        static Guard* inputGuard(Chanin<T>& in, T& dest) { return in.getGuard(dest); }
+        template <typename T>
+        static Guard* outputGuard(Chanout<T>& out, const T& source) { return out.getGuard(source); }
+        static Guard* guardOf(csp::Guard& g) { return g.internal_guard_ptr; }
+        static void addGuard(Alternative& alt, Guard* g) { alt.addBinding(g); }
+    };
+}
 
 } // namespace csp
 

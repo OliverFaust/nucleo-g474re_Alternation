@@ -4,15 +4,13 @@
 #include "cmsis_os2.h"
 #include <tuple>
 #include <utility>
-#include <cstdio>
-#include "csp4cmsis.h"
+#include "process.h"
+#include "csp_fatal.h"
 
 // --- 1. START CSP NAMESPACE (For Definitions) ---
 namespace csp {
-    class CSProcess; // Defined in process.h
-    // TaskCtx is defined in process.h (needed there so public_task.h can
-    // see it too -- csp4cmsis.h includes public_task.h before run.h).
 
+    /// How Run() starts a network (3.0: always given explicitly).
     enum class ExecutionMode {
         TerminatingNetwork, // Blocking: spawns all processes, waits for all to finish.
         StaticNetwork        // Non-blocking: spawns all processes, returns immediately.
@@ -28,31 +26,9 @@ extern "C" {
 // --- 3. Continue CSP Namespace (For Template Logic) ---
 namespace csp {
 
-// Composition-wide default priority for the ParallelHelper Run()
-// overloads. Was tskIDLE_PRIORITY + 2 -- a literal native FreeRTOS
-// priority of 2 (tskIDLE_PRIORITY is always 0), deliberately offset above
-// Idle rather than landing on it, per that formula's own intent: "low/
-// background, but not literally competing with the OS idle task."
-// osPriorityLow (8) is the closest portable match to that intent --
-// osPriorityIdle (1) would misrepresent it (it's exactly the tier the
-// original formula was written to avoid), and there's no named
-// osPriority_t constant at the unnamed numeric slots in between.
-//
-// FLAGGED, NOT YET HARDWARE-VERIFIED: this changes a real relative-
-// scheduling relationship. Both existing call sites that rely on this
-// default (application.cpp's MainApp_Task, neuropathway's
-// csp4cmsis_spn.cpp) launch their own task via xTaskCreate(...,
-// tskIDLE_PRIORITY + 3, ...) -- native priority 3 -- then spawn their CSP
-// network via this default. Under the old formula the network ran at
-// native priority 2, BELOW its launching task; osPriorityLow maps
-// (FreeRTOS adapter: priority - 1) to native priority 7, ABOVE it -- a
-// real ordering flip, not just a renumbering. Reasoned to be
-// unobservable in both existing call sites (their launching task spends
-// nearly all its post-spawn time blocked in vTaskDelay() for periodic
-// reporting, not competing for CPU), but that's reasoning, not something
-// confirmed on hardware -- check this deliberately in the next
-// neuropathway hardware pass rather than assume it's fine.
-constexpr osPriority_t CSP_LEGACY_PARALLEL_PRIORITY = osPriorityLow;
+/// Default composition priority of Run(): for every process that does not
+/// override taskPriority(). osPriorityLow: low, but above osPriorityIdle.
+inline constexpr osPriority_t CSP_DEFAULT_NETWORK_PRIORITY = osPriorityLow;
 
 // --- Parallel Helper ---
 template <typename... Processes>
@@ -77,8 +53,8 @@ private:
     void spawn_task(osSemaphoreId_t sem, osPriority_t composition_priority) {
         CSProcess& proc = std::get<I>(procs);
 
-        TaskCtx* ctx = proc.prepareTaskCtx(sem);
-        osPriority_t priority = resolveTaskPriority(proc, composition_priority);
+        internal::TaskCtx* ctx = proc.prepareTaskCtx(sem);
+        osPriority_t priority = internal::resolveTaskPriority(proc, composition_priority);
 
         // osThreadAttr_t -- same pattern as public_task.h's Run(); see
         // that file's comment and csp_rtos_static.h for why stack_mem/
@@ -98,10 +74,10 @@ private:
 
         proc.setTaskHandle(handle);
 
+        // A process that did not start would leave its partners, or a
+        // TerminatingNetwork's caller, blocked for ever: stop instead.
         if (handle == NULL) {
-            printf("FATAL ERROR: Failed to create RTOS2 task for CSProcess '%s' "
-                   "(osThreadNew returned NULL -- check stack/TCB buffers).\r\n",
-                   proc.name());
+            internal::fatal("CSP4CMSIS: Run(): osThreadNew() failed");
         }
     }
 
@@ -181,19 +157,16 @@ ParallelHelper<Processes...> InParallel(Processes&... procs) {
     return ParallelHelper<Processes...>(procs...);
 }
 
-// 1. Terminating-network Run(). 'priority' is the COMPOSITION-WIDE
-// default: it applies to any process that hasn't overridden
-// taskPriority(). The default value matches pre-1.2 behavior exactly.
-template <typename... Processes>
-void Run(ParallelHelper<Processes...> helper,
-         osPriority_t priority = CSP_LEGACY_PARALLEL_PRIORITY) {
-    helper.execute_terminating(priority);
-}
-
-// 2. Explicit ExecutionMode selection. Same priority semantics as (1).
+/**
+ * @brief Starts every process of `helper` as its own thread.
+ * StaticNetwork: returns at once. TerminatingNetwork: returns when every
+ * process has returned from run() (call it from a thread). `priority` is the
+ * composition priority, for every process that does not override
+ * taskPriority(). A thread that cannot be created is a fatal error.
+ */
 template <typename... Processes>
 void Run(ParallelHelper<Processes...> helper, ExecutionMode mode,
-         osPriority_t priority = CSP_LEGACY_PARALLEL_PRIORITY) {
+         osPriority_t priority = CSP_DEFAULT_NETWORK_PRIORITY) {
     if (mode == ExecutionMode::StaticNetwork) {
         helper.execute_static(priority);
     } else {

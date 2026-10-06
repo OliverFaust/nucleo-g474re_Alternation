@@ -17,7 +17,7 @@ class RendezvousChannel : public BaseAltChan<T> {
     static_assert(std::is_trivially_copyable_v<T>,
                   "RendezvousChannel: T must be trivially copyable (elements are copied with memcpy)");
     static_assert(P == csp::BufferPolicy::Block,
-                  "KeepNewest/KeepOldest need a buffer: use SamplingBufferedChannel<T, 1, P> "
+                  "KeepNewest/KeepOldest need a buffer: use BufferedChannel<T, 1, P> "
                   "(a rendezvous writer cannot wait for an ALT reader without blocking)");
 private:
     RendezvousCore core_{sizeof(T)};

@@ -3,28 +3,48 @@
 
 #include <stdint.h>
 
-// Static (no-heap) allocation for csp4cmsis's RTOS2 objects (thread
-// control blocks, event-flags control blocks, semaphore control blocks)
-// is opt-in and backend-specific -- every CMSIS-RTOS2 backend supports
-// dynamic allocation identically (osThreadNew(NULL) etc.), but each owns
-// a completely different internal control-block layout for its static
-// path, so a caller-supplied cb_mem/cb_size buffer must be sized/typed to
-// match whichever backend is actually running underneath. Backing one
-// backend's static allocation with another's control-block type would
-// compile (both are just structs) but silently corrupt memory at
-// runtime, since the RTOS writes its own real internal state into that
-// buffer at a size/layout the wrong type doesn't actually match.
+// Allocation of the library's RTOS objects (3.0 on):
 //
-// Default (CSP4CMSIS_STATIC_ALLOCATION undefined): nothing in this header
-// is defined, and process.h/alt.h/run.h fall back to dynamic allocation
-// (NULL cb_mem/zero cb_size) -- genuinely portable across any CMSIS-RTOS2
-// backend with zero per-backend configuration.
+// - Static (the default): every thread, event-flags and semaphore control
+//   block CSP4CMSIS creates is a member of a CSP4CMSIS object (no RTOS heap).
+//   The control-block types are backend-specific, so the backend must be
+//   known: CSP4CMSIS_RTOS2_BACKEND_FREERTOS or _RTX5, if the project does not
+//   define one, is detected from RTE_Components.h (pack builds:
+//   RTE_CMSIS_RTOS2_FreeRTOS / RTE_CMSIS_RTOS2_RTX5), else from which RTOS
+//   header is on the include path (FreeRTOS.h or rtx_os.h).
+// - Dynamic (opt-out, define CSP4CMSIS_DYNAMIC_ALLOCATION): RTOS objects come
+//   from the RTOS's own allocator (NULL cb_mem); no backend needed.
 //
-// Projects that need zero-heap csp4cmsis objects opt in explicitly:
-// define CSP4CMSIS_STATIC_ALLOCATION, plus exactly one
-// CSP4CMSIS_RTOS2_BACKEND_* macro naming which backend's control-block
-// layout to use.
+// Before 3.0 dynamic was the default and CSP4CMSIS_STATIC_ALLOCATION opted
+// in; that define is still accepted (it now only restates the default).
+#if defined(CSP4CMSIS_DYNAMIC_ALLOCATION) && defined(CSP4CMSIS_STATIC_ALLOCATION)
+  #error "CSP4CMSIS: define CSP4CMSIS_DYNAMIC_ALLOCATION or CSP4CMSIS_STATIC_ALLOCATION, not both (static allocation is the default since 3.0)"
+#endif
+#if !defined(CSP4CMSIS_DYNAMIC_ALLOCATION) && !defined(CSP4CMSIS_STATIC_ALLOCATION)
+  #define CSP4CMSIS_STATIC_ALLOCATION 1
+#endif
+
 #if defined(CSP4CMSIS_STATIC_ALLOCATION)
+
+  #if defined(CSP4CMSIS_RTOS2_BACKEND_FREERTOS) && defined(CSP4CMSIS_RTOS2_BACKEND_RTX5)
+    #error "CSP4CMSIS: define only one of CSP4CMSIS_RTOS2_BACKEND_FREERTOS and CSP4CMSIS_RTOS2_BACKEND_RTX5"
+  #endif
+  #if !defined(CSP4CMSIS_RTOS2_BACKEND_FREERTOS) && !defined(CSP4CMSIS_RTOS2_BACKEND_RTX5)
+    #if __has_include("RTE_Components.h")
+      #include "RTE_Components.h"
+    #endif
+    #if defined(RTE_CMSIS_RTOS2_FreeRTOS)
+      #define CSP4CMSIS_RTOS2_BACKEND_FREERTOS 1
+    #elif defined(RTE_CMSIS_RTOS2_RTX5)
+      #define CSP4CMSIS_RTOS2_BACKEND_RTX5 1
+    #elif __has_include("FreeRTOS.h") && !__has_include("rtx_os.h")
+      #define CSP4CMSIS_RTOS2_BACKEND_FREERTOS 1
+    #elif __has_include("rtx_os.h") && !__has_include("FreeRTOS.h")
+      #define CSP4CMSIS_RTOS2_BACKEND_RTX5 1
+    #else
+      #error "CSP4CMSIS: static allocation (the default) needs the CMSIS-RTOS2 backend, and it could not be detected (neither or both of FreeRTOS.h and rtx_os.h on the include path). Define CSP4CMSIS_RTOS2_BACKEND_FREERTOS or CSP4CMSIS_RTOS2_BACKEND_RTX5, or CSP4CMSIS_DYNAMIC_ALLOCATION for dynamic allocation."
+    #endif
+  #endif
 
   #if defined(CSP4CMSIS_RTOS2_BACKEND_FREERTOS)
     // Verified directly against the installed ARM::CMSIS-FreeRTOS@11.3.0
@@ -41,6 +61,8 @@
     #include "task.h"
     #include "event_groups.h"
     #include "semphr.h"
+    // configSUPPORT_STATIC_ALLOCATION is checked in glue.cpp (FreeRTOS defines
+    // StaticTask_t etc. regardless of it).
     namespace csp::internal {
         using csp_static_thread_storage_t     = StaticTask_t;
         using csp_static_eventflags_storage_t = StaticEventGroup_t;
@@ -63,8 +85,6 @@
         using csp_static_semaphore_storage_t  = osRtxSemaphore_t;
     }
 
-  #else
-    #error "CSP4CMSIS_STATIC_ALLOCATION requires a CSP4CMSIS_RTOS2_BACKEND_* define to select the matching backend (CSP4CMSIS_RTOS2_BACKEND_FREERTOS or CSP4CMSIS_RTOS2_BACKEND_RTX5)"
   #endif
 
 #endif // CSP4CMSIS_STATIC_ALLOCATION
