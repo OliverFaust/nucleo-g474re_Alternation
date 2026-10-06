@@ -4,7 +4,7 @@ A demonstration of **alternation** (CSP external choice) with the CSP (Communica
 
 ## Features
 - FreeRTOS with the CMSIS-RTOS v2 API (STM32CubeMX `CMSIS_V2` interface)
-- CSP4CMSIS 2.0.1, in `lib/csp4cmsis/` (unmodified; see `lib/csp4cmsis/VERSION`)
+- CSP4CMSIS 3.0.0, in `lib/csp4cmsis/` (unmodified; see `lib/csp4cmsis/VERSION`)
 - Alternation: `Alternative` with two input guards and `fairSelect()`
 - Rendezvous channels, 2 000 000 messages, each checked for sender id and sequence number
 - Zero heap: no FreeRTOS heap and no C library heap allocation (see [Memory](#memory))
@@ -23,7 +23,7 @@ Tested with:
 | STM32CubeIDE | 2.1.0 (GNU Tools for STM32 14.3.rel1) |
 | STM32CubeMX (only to regenerate code) | 6.17.0 |
 | STM32Cube FW_G4 | V1.6.3 (FreeRTOS 10.3.1) |
-| CSP4CMSIS | 2.0.1 |
+| CSP4CMSIS | 3.0.0 |
 
 ## Serial Configuration
 - Baud Rate: 115200
@@ -38,7 +38,7 @@ Tested with:
 4. Select this directory
 5. Build (configuration `Debug` or `Release`) and flash to your Nucleo board
 
-The CSP4CMSIS settings are already in the project (G++ compiler, Debug and Release): include path `../lib/csp4cmsis/inc`, and the defines `CSP4CMSIS_RTOS2_BACKEND_FREERTOS`, `CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY=5`, `CSP4CMSIS_STATIC_ALLOCATION` and `CSP4CMSIS_DEVICE_HEADER="stm32g4xx.h"` (explained in the [CSP4CMSIS STM32CubeIDE guide](https://github.com/OliverFaust/CSP4CMSIS/blob/main/Documentation/CSP4CMSIS_STM32CubeIDE.md)).
+The CSP4CMSIS settings are already in the project (G++ compiler, Debug and Release): include path `../lib/csp4cmsis/inc`, and the two defines `CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY=5` and `CSP4CMSIS_DEVICE_HEADER="stm32g4xx.h"`; CSP4CMSIS allocates its RTOS objects statically by default and finds FreeRTOS from `FreeRTOS.h` (explained in the [CSP4CMSIS STM32CubeIDE guide](https://github.com/OliverFaust/CSP4CMSIS/blob/main/Documentation/CSP4CMSIS_STM32CubeIDE.md)).
 
 `nucleo-g474re_v10.ioc` can be opened and regenerated (GENERATE CODE) without losing anything: the application's code in `main.c` and `FreeRTOSConfig.h` sits between `USER CODE BEGIN`/`END` markers, and the FreeRTOS settings it needs (heap size, newlib reentrancy, static default task) are stored in the `.ioc`.
 
@@ -46,7 +46,7 @@ The CSP4CMSIS settings are already in the project (G++ compiler, Debug and Relea
 - `Core/` - `main.c` (CubeMX), `application.cpp` (the example)
 - `Drivers/` - STM32 HAL, CMSIS and BSP drivers
 - `Formal model/` - CSP-M model of the network
-- `lib/csp4cmsis/` - CSP4CMSIS 2.0.1
+- `lib/csp4cmsis/` - CSP4CMSIS 3.0.0
 - `Middlewares/` - FreeRTOS middleware
 - `csp4cmsis_map_report.py` - shows how much FLASH and RAM CSP4CMSIS takes (from the linker map file)
 
