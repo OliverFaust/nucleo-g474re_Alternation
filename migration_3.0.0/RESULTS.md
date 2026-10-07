@@ -62,3 +62,31 @@ The ALT (`Alternative alt(inA | msgA, inB | msgB)`, `fairSelect()`) is unchanged
 - **Fresh clone** to another path, empty workspace, import, build (0 errors, 0 warnings both): Release ELF
   byte-identical, Debug flash image identical; flashed: output identical to the checkout's 3.0.0 run
   (`results/fresh_debug_uart.txt`).
+
+## Console with one owner (branch `console-owner`, 2026-10-07)
+
+**Why:** three processes printed. The BSP's `__io_putchar()` ignores `HAL_UART_Transmit()`'s `HAL_BUSY`
+(the HAL checks `gState` without a lock), so a thread that prints while another is in the middle of a
+character loses its whole line. Measured on `main` with a scratch counter, 5 runs each: Debug 75 characters
+lost per run (`[Sender 2] Starting`, `[Sender 1] Finished`, `[Sender 2] Finished`), Release 152 (both Sender 2
+lines, `Verified 2000000`, `SUCCESS`); identical in every run of an image; the data path was always complete
+(1 000 000 sent and received per sender, `error_found` 0). Buffered stdout and `configUSE_NEWLIB_REENTRANT`
+0 or 1 do not help (all four combinations lose lines; buffered stdout also merges lines, as in `BASELINE.md`).
+
+**Change:** only the Receiver prints while the network runs; it reports each sender's completion. MainApp
+prints before the processes run (`osPriorityBelowNormal` above the network's `osPriorityLow`, and it ends
+without blocking); `defaultTask` does not print.
+
+**Verified** (CubeIDE 2.1.0, Debug and Release, 0 errors, 0 warnings; 5 runs of the built image and 5 of a
+scratch copy with a `__io_putchar` result counter, per configuration):
+
+| | Debug | Release |
+|---|---|---|
+| Every expected line, nothing else, in order (205 lines) | 10 of 10 runs | 10 of 10 runs |
+| `HAL_BUSY` / other UART errors (scratch counter) | 0 / 0 (8485 characters sent) | 0 / 0 |
+| Sent and received per sender, `count`, `error_found` | 1 000 000 / 1 000 000, 2 000 000, 0 | the same |
+| Stacks SenderA / SenderB / Receiver / MainApp / defaultTask | 328 / 328 / 716 / 620 / 128 B | 220 / 220 / 676 / 308 / 100 B |
+| FreeRTOS heap / C-library heap | 0 allocations / 0 (`_sbrk` never called) | the same |
+
+The Senders' stacks are smaller (no `printf`); the "Zero-Heap" banner stays. Logs:
+`results/console_owner_{debug,release}_{uart,measure}.txt`.
