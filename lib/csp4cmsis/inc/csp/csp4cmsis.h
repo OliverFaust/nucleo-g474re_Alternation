@@ -1,19 +1,14 @@
-// --- csp4cmsis.h (Finalized SPN Structure with Process Composition) ---
+// --- csp4cmsis.h: the one header applications include ---
 #ifndef CSP4CMSIS_H
 #define CSP4CMSIS_H
 
 // ======================================================================
 // 1. Core Definitions (Must be available to both C and C++ sections)
 // ======================================================================
-// FreeRTOS.h previously had to stay here because run.h's
-// CSP_LEGACY_PARALLEL_PRIORITY and public_task.h's CSP_DEFAULT_TASK_
-// PRIORITY used FreeRTOS-only macros (tskIDLE_PRIORITY, configMAX_
-// PRIORITIES) as C++ default function-parameter values, expanded at
-// header-parse time. Both were replaced with portable osPriority_t
-// constants, clearing that dependency -- confirmed by this include's
-// removal building clean.
-#include "time.h"     // Defines csp::Time, etc. (Must be C++-safe)
-#include "process.h"  // Defines csp::internal::Process base (Must be C++-safe)
+// No RTOS-specific header: the library uses CMSIS-RTOS2 only (cmsis_os2.h).
+#include "csp_version.h"  // CSP4CMSIS_VERSION_MAJOR/MINOR/PATCH
+#include "csp_time.h"     // csp::Time, Ticks(), Milliseconds(), Seconds(), Forever
+#include "process.h"      // csp::CSProcess, CSProcessStatic<N>
 
 
 // ======================================================================
@@ -27,12 +22,11 @@ namespace csp { /* Forward declare namespace content here if needed */ }
 #include "rendezvous_channel.h" // Rendezvous (and signal) channels, OWRV ALT protocol
 #include "buffered_channel.h"// For future implementation
 #include "barrier.h"         // Standard CSP primitive
-#include "public_channel.h"  // Includes One2OneChannel<T>
-#include "public_task.h"     // Includes CSProcess, SleepFor(), etc.
-#include "run.h"             // <--- NEW: Includes InParallel/InSequence helpers, and Run()
+#include "public_channel.h"  // Channel, BufferedChannel, SignalChannel
+#include "public_task.h"     // SleepFor()
+#include "run.h"             // InParallel(), Run(), ExecutionMode
 
-// Note: Run() is defined in run.h, and is the single spawn path for both
-// one-process and multi-process compositions -- use Run(InParallel(...)).
+// Run() is the one way to start processes: Run(InParallel(...), mode).
 
 #endif // __cplusplus
 

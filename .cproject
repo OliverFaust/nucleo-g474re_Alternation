@@ -87,9 +87,7 @@
 									<listOptionValue builtIn="false" value="USE_NUCLEO_64"/>
 									<listOptionValue builtIn="false" value="USE_HAL_DRIVER"/>
 									<listOptionValue builtIn="false" value="STM32G474xx"/>
-									<listOptionValue builtIn="false" value="CSP4CMSIS_RTOS2_BACKEND_FREERTOS"/>
 									<listOptionValue builtIn="false" value="CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY=5"/>
-									<listOptionValue builtIn="false" value="CSP4CMSIS_STATIC_ALLOCATION"/>
 									<listOptionValue builtIn="false" value="CSP4CMSIS_DEVICE_HEADER=&quot;stm32g4xx.h&quot;"/>
 								</option>
 								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.languagestandard.55230687" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.languagestandard" value="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.option.languagestandard.value.gnupp17" valueType="enumerated"/>
@@ -212,9 +210,7 @@
 									<listOptionValue builtIn="false" value="USE_NUCLEO_64"/>
 									<listOptionValue builtIn="false" value="USE_HAL_DRIVER"/>
 									<listOptionValue builtIn="false" value="STM32G474xx"/>
-									<listOptionValue builtIn="false" value="CSP4CMSIS_RTOS2_BACKEND_FREERTOS"/>
 									<listOptionValue builtIn="false" value="CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY=5"/>
-									<listOptionValue builtIn="false" value="CSP4CMSIS_STATIC_ALLOCATION"/>
 									<listOptionValue builtIn="false" value="CSP4CMSIS_DEVICE_HEADER=&quot;stm32g4xx.h&quot;"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.input.cpp.235902655" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.input.cpp"/>

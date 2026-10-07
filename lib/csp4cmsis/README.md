@@ -28,7 +28,7 @@ This library enables embedded developers to move away from complex mutex/semapho
 * **`barrier.h`**: Multi-process synchronization points.
 
 ### `src/` (Implementation)
-* **`kernel.cpp`**: The glue between CSP logic and the underlying RTOS scheduler.
+* **`csp_wrapper.cpp`**: The thread entry function of every process (`ThreadFuncWrapper`).
 * **`alternative.cpp`**: `select()`: fair selection, one-winner state word, re-verification of every wakeup.
 * **`alt_channel_sync.cpp`**: Rendezvous (and signal) channel core: one-winner ALT protocol with re-verification (OWRV).
 * **`glue.cpp`**: Internal adapters for CMSIS-compliant RTOS calls.

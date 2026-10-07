@@ -47,7 +47,7 @@ class Sender: public CSProcessStatic < 256 > {
     }
     printf("[Sender %d] Finished.\r\n", id);
     while (true) {
-      SleepFor(osWaitForever);  // done: sleep for ever
+      SleepFor(Forever);  // done: sleep for ever
     }
   }
 };
@@ -63,7 +63,7 @@ class Receiver: public CSProcessStatic < 512 > {
   }
 
   void run() override {
-    SleepFor(Milliseconds(10).to_ticks());
+    SleepFor(Milliseconds(10));
     printf("[Receiver] Task running. Using Resident-Guard ALT.\r\n");
 
     Message msgA, msgB;
@@ -108,7 +108,7 @@ class Receiver: public CSProcessStatic < 512 > {
       printf("[Receiver] SUCCESS: %d messages verified heap-free.\r\n", count);
     }
     while (true) {
-      SleepFor(osWaitForever);  // done: sleep for ever
+      SleepFor(Forever);  // done: sleep for ever
     }
   }
 };
