@@ -36,8 +36,9 @@ class Sender: public CSProcessStatic < 256 > {
     return "Sender";
   }
 
+  // The Senders do not print: the console is a shared resource, and only the Receiver uses it
+  // while the network runs (it reports when a sender's messages are complete).
   void run() override {
-    printf("[Sender %d] Starting sequence.\r\n", id);
     for (int i = 0; i < TOTAL_MESSAGES_PER_SENDER; ++i) {
       Message msg = {
         id,
@@ -45,7 +46,6 @@ class Sender: public CSProcessStatic < 256 > {
       };
       out << msg;
     }
-    printf("[Sender %d] Finished.\r\n", id);
     while (true) {
       SleepFor(Forever);  // done: sleep for ever
     }
@@ -88,6 +88,9 @@ class Receiver: public CSProcessStatic < 512 > {
           error_found = true;
         }
         next_seqA++;
+        if (next_seqA == TOTAL_MESSAGES_PER_SENDER) {
+          printf("[Receiver] Sender 1: all %d messages received\r\n", next_seqA);
+        }
       } else if (selected == 1) {
         if (msgB.source_id != 2 || msgB.sequence_num != next_seqB) {
           printf("!! DATA ERROR Chan B: Expected ID 2 Seq %d, Got ID %d Seq %d\r\n",
@@ -95,6 +98,9 @@ class Receiver: public CSProcessStatic < 512 > {
           error_found = true;
         }
         next_seqB++;
+        if (next_seqB == TOTAL_MESSAGES_PER_SENDER) {
+          printf("[Receiver] Sender 2: all %d messages received\r\n", next_seqB);
+        }
       }
 
       count++;
@@ -106,6 +112,8 @@ class Receiver: public CSProcessStatic < 512 > {
 
     if (!error_found) {
       printf("[Receiver] SUCCESS: %d messages verified heap-free.\r\n", count);
+    } else {
+      printf("[Receiver] DATA ERROR: verification stopped after %d messages.\r\n", count);
     }
     while (true) {
       SleepFor(Forever);  // done: sleep for ever
