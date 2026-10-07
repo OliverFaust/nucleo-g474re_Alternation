@@ -59,7 +59,7 @@ The CSP4CMSIS settings are already in the project (G++ compiler, Debug and Relea
    - selects **exactly one** ready guard and transfers **its** message into `msgA` or `msgB` before returning; the other sender keeps waiting, its message untouched;
    - returns the index of the selected guard (0 = `chan_A`, 1 = `chan_B`);
    - is **fair**: the guards are checked starting after the one selected last time, so when both senders are ready they are served alternately and neither can starve the other (`priSelect()` would always check in the order the guards were given).
-4. The Receiver checks every message (sender id, next sequence number), prints progress every 10 000 messages and finally `SUCCESS: 2000000 messages verified heap-free.`
+4. The Receiver checks every message (sender id, next sequence number), prints progress every 10 000 messages, reports each sender once all its 1 000 000 messages have arrived, and finally prints `SUCCESS: 2000000 messages verified heap-free.` (or a `DATA ERROR` line). The Senders print nothing.
 5. **Start-up**: `main.c` calls `csp_app_main_init()`, which creates the `MainApp` thread (static stack). `MainApp` starts the three processes with `Run(InParallel(sA, sB, r1), ExecutionMode::StaticNetwork, osPriorityLow)`; `Run()` returns at once, and `MainApp` ends. `MainApp` runs at a higher priority (`osPriorityBelowNormal`), so the processes first run after it has ended.
 
 CSP4CMSIS 2.0 implements the alternation with a one-winner protocol: every wakeup is re-checked, so a guard is only selected together with its own data, and no message is lost or delivered twice. Rules: at most one process may wait in an `Alternative` on each end of a channel (here: only the Receiver, on the reading ends); channel element types must be trivially copyable (`Message` is two `int`s).
@@ -73,19 +73,18 @@ Welcome to STM32 world !
 
 --- Launching CSP Static Network (Zero-Heap) ---
 *** MainApp_Task: network started. Terminating. ***
-[Sender 1] Starting sequence.
-[Sender 2] Starting sequence.
 [Receiver] Task running. Using Resident-Guard ALT.
 [Receiver] Verified 10000 messages...
 [Receiver] Verified 20000 messages...
 ...
+[Receiver] Verified 1990000 messages...
+[Receiver] Sender 1: all 1000000 messages received
+[Receiver] Sender 2: all 1000000 messages received
 [Receiver] Verified 2000000 messages...
-[Sender 1] Finished.
-[Sender 2] Finished.
 [Receiver] SUCCESS: 2000000 messages verified heap-free.
 ```
 
-**Note on the console:** three processes print. If two print at the same moment, the BSP's console driver (`__io_putchar()`) drops the characters of the second one while the UART is busy: on the board, some of the `Starting`/`Finished` lines, and sometimes the last progress line and the `SUCCESS` line, are missing or garbled. The processes themselves complete; only console output is lost.
+**The console has one owner:** it is a shared resource, and the BSP's console driver (`__io_putchar()`) silently drops the characters of a second thread that prints while the UART is busy, so only the Receiver prints while the network runs (MainApp prints before the processes start, at a higher priority, and `defaultTask` does not print).
 
 ## Memory
 
