@@ -92,6 +92,7 @@ Measured on the board (Debug and Release):
 
 - **FreeRTOS heap: not used.** `pvPortMalloc()` is never called (0 allocations). The three processes, `MainApp`, CubeMX's `defaultTask`, and FreeRTOS's idle and timer tasks all have static stacks and control blocks; the rendezvous channels need no RTOS objects. The FreeRTOS heap (`configTOTAL_HEAP_SIZE`) is therefore set to only 1 KB.
 - **C library heap: not used.** `main.c` (USER CODE 2) makes `stdout` unbuffered with `setvbuf(stdout, NULL, _IONBF, 0)`; otherwise newlib's `printf()` would `malloc()` a 1 KB `stdout` buffer on first use (measured: 1032 B). With it, `_sbrk()` is never called.
+- So the program allocates no heap memory at all: the "(Zero-Heap)" in the start-up banner is literal.
 
 ## License and Declaration
 
