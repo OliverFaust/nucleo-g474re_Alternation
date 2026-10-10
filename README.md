@@ -40,7 +40,7 @@ Tested with:
 
 The CSP4CMSIS settings are already in the project (G++ compiler, Debug and Release): include path `../lib/csp4cmsis/inc`, and the two defines `CSP4CMSIS_MAX_SYSCALL_INTERRUPT_PRIORITY=5` and `CSP4CMSIS_DEVICE_HEADER="stm32g4xx.h"`; CSP4CMSIS allocates its RTOS objects statically by default and finds FreeRTOS from `FreeRTOS.h` (explained in the [CSP4CMSIS STM32CubeIDE guide](https://github.com/OliverFaust/CSP4CMSIS/blob/main/Documentation/CSP4CMSIS_STM32CubeIDE.md)).
 
-`nucleo-g474re_v10.ioc` can be opened and regenerated (GENERATE CODE) without losing anything: the application's code in `main.c` and `FreeRTOSConfig.h` sits between `USER CODE BEGIN`/`END` markers, and the FreeRTOS settings it needs (heap size, newlib reentrancy, static default task) are stored in the `.ioc`.
+`nucleo-g474re_v10.ioc` can be opened and regenerated (GENERATE CODE): the application's code in `main.c` and `FreeRTOSConfig.h` sits between `USER CODE BEGIN`/`END` markers, and the FreeRTOS settings it needs (heap size, newlib reentrancy, static default task) are stored in the `.ioc`. defaultTask was removed from main.c; if you regenerate the project with CubeMX, delete it again.
 
 ## Project Structure
 - `Core/` - `main.c` (CubeMX), `application.cpp` (the example)
@@ -84,14 +84,15 @@ Welcome to STM32 world !
 [Receiver] SUCCESS: 2000000 messages verified heap-free.
 ```
 
-**The console has one owner:** it is a shared resource, and the BSP's console driver (`__io_putchar()`) silently drops the characters of a second thread that prints while the UART is busy, so only the Receiver prints while the network runs (MainApp prints before the processes start, at a higher priority, and `defaultTask` does not print).
+**The console has one owner:** it is a shared resource, and the BSP's console driver (`__io_putchar()`) silently drops the characters of a second thread that prints while the UART is busy, so only the Receiver prints while the network runs (MainApp prints before the processes start, at a higher priority).
 
 ## Memory
 
 Measured on the board (Debug and Release):
 
-- **FreeRTOS heap: not used.** `pvPortMalloc()` is never called (0 allocations). The three processes, `MainApp`, CubeMX's `defaultTask`, and FreeRTOS's idle and timer tasks all have static stacks and control blocks; the rendezvous channels need no RTOS objects. The FreeRTOS heap (`configTOTAL_HEAP_SIZE`) is therefore set to only 1 KB.
+- **FreeRTOS heap: not used.** `pvPortMalloc()` is never called (0 allocations). The three processes, `MainApp`, and FreeRTOS's idle and timer tasks all have static stacks and control blocks; the rendezvous channels need no RTOS objects. The FreeRTOS heap (`configTOTAL_HEAP_SIZE`) is therefore set to only 1 KB.
 - **C library heap: not used.** `main.c` (USER CODE 2) makes `stdout` unbuffered with `setvbuf(stdout, NULL, _IONBF, 0)`; otherwise newlib's `printf()` would `malloc()` a 1 KB `stdout` buffer on first use (measured: 1032 B). With it, `_sbrk()` is never called.
+- So the program allocates no heap memory at all: the "(Zero-Heap)" in the start-up banner is literal.
 
 ## License and Declaration
 
