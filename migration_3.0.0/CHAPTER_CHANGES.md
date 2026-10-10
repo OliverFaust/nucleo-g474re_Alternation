@@ -20,3 +20,18 @@
    `SUCCESS`; on the board every line now appears, in this order.
 5. **Unchanged:** the ALT's behaviour (strict rotation with `fairSelect()`), priorities, memory (0 FreeRTOS
    heap allocations, C-library heap 0: the "Zero-Heap" banner stays), the formal model.
+6. **Simplified listing (branch `simplify-chapter-code`):** the code shows the chapter's concept and
+   nothing else.
+   - `using AltChannel = Channel<Message>;` is gone: `static Channel<Message> chan_A, chan_B;`.
+     `struct Message { int source_id; int sequence_num; }` stays: the Receiver checks both fields.
+   - `Sender` and `Receiver` lose their `name()` overrides; the listing is reformatted (the earlier
+     `Chanout < Message >` spacing came from a formatter).
+   - **`main.c`:** CubeMX's `defaultTask` is removed (its attributes, its creation, `StartDefaultTask`).
+     The program's threads are now exactly the ones in `application.cpp` (MainApp and the processes),
+     plus FreeRTOS's idle and timer tasks. The `.ioc` still contains the task: CubeMX does not allow a
+     project without one and re-creates it on regeneration (from the `.ioc`, as the static, heap-free
+     task it was); the README says to delete it again.
+   - **Thread names:** without the `name()` overrides, the processes appear as `csp_task` in a
+     debugger's thread view; MainApp keeps its name (`attr.name`).
+   - **Comments** shortened to what is surprising; the explanations are in the chapter text.
+   - The console output is unchanged.
