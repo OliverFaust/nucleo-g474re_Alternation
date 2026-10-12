@@ -1,7 +1,7 @@
 #include "application.h"
 
 #include "cmsis_os2.h"
-#include "FreeRTOS.h"  // StaticTask_t
+#include "FreeRTOS.h"
 #include "csp/csp4cmsis.h"
 
 #include <cstdio>
@@ -30,7 +30,7 @@ class Sender : public CSProcessStatic<256> {
       out << msg;
     }
     while (true) {
-      SleepFor(Forever);  // done
+      SleepFor(Forever);
     }
   }
 };
@@ -42,7 +42,6 @@ class Receiver : public CSProcessStatic<512> {
  public:
   Receiver(Chanin<Message> rA, Chanin<Message> rB) : inA(rA), inB(rB) {}
 
-  // The only process that prints: two threads printing at once would lose characters.
   void run() override {
     SleepFor(Milliseconds(10));
     printf("[Receiver] Task running. Using Resident-Guard ALT.\r\n");
@@ -53,8 +52,6 @@ class Receiver : public CSProcessStatic<512> {
     int next_seqB = 0;
     bool error_found = false;
 
-    // fairSelect() starts after the guard selected last time, so neither sender can starve
-    // the other. When it returns, the selected guard's message has been transferred.
     Alternative alt(inA | msgA, inB | msgB);
 
     while (count < MAX_TOTAL_MESSAGES) {
@@ -95,17 +92,14 @@ class Receiver : public CSProcessStatic<512> {
       printf("[Receiver] DATA ERROR: verification stopped after %d messages.\r\n", count);
     }
     while (true) {
-      SleepFor(Forever);  // done
+      SleepFor(Forever);
     }
   }
 };
 
-// MainApp runs above the network, so the processes first run after MainApp has printed
-// its messages and exited.
 static constexpr osPriority_t MAIN_APP_PRIORITY = osPriorityBelowNormal;
 static constexpr osPriority_t NETWORK_PRIORITY  = osPriorityLow;
 
-// Static stack (384 words = 1.5 KB) and control block: no heap.
 alignas(8) static uint32_t mainAppStack[384];
 static StaticTask_t mainAppControlBlock;
 

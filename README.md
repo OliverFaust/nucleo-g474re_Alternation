@@ -2,6 +2,8 @@
 
 A demonstration of **alternation** (CSP external choice) with the CSP (Communicating Sequential Processes) library CSP4CMSIS on CMSIS-RTOS v2, on an STM32G474RE microcontroller. Two sender processes each send a numbered stream of messages over their own channel; one receiver waits on both channels at once and takes whichever message is ready, checking that every message arrives exactly once and in order. The formal CSP model is in [`Formal model/`](Formal%20model/).
 
+The explanations for this code are in the book; the source files deliberately contain no comments.
+
 ## Features
 - FreeRTOS with the CMSIS-RTOS v2 API (STM32CubeMX `CMSIS_V2` interface)
 - CSP4CMSIS 3.0.0, in `lib/csp4cmsis/` (unmodified; see `lib/csp4cmsis/VERSION`)
