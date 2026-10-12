@@ -44,7 +44,7 @@ class Receiver : public CSProcessStatic<512> {
 
   void run() override {
     SleepFor(Milliseconds(10));
-    printf("[Receiver] Task running. Using Resident-Guard ALT.\r\n");
+    printf("[Receiver] Task running.\r\n");
 
     Message msgA, msgB;
     int count = 0;

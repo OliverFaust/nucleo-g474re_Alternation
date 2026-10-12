@@ -35,7 +35,7 @@ For each file, in file order: where the comment was (line numbers before the rem
    ```cpp
    45    void run() override {
    46      SleepFor(Milliseconds(10));
-   47      printf("[Receiver] Task running. Using Resident-Guard ALT.\r\n");
+   47      printf("[Receiver] Task running.\r\n");
    ```
 
 4. **Lines 56–57**, above the code; explains listing line 55:
