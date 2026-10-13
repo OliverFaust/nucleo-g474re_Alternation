@@ -1,14 +1,17 @@
 #include "csp/alt.h"
 #include "csp/csp_critical.h"
 #include <cstdio>
-// CMSIS compiler intrinsics (__CLZ, etc.) -- typically pulled in via the
-// device header, but included explicitly here since this file depends on
-// __CLZ directly.
+// CMSIS compiler intrinsics -- typically pulled in via the device header,
+// but included explicitly here since this file uses __CLZ directly: phase 4
+// of AltScheduler::select() picks the winner with one __CLZ of ready_mask.
 extern "C" {
     #include <cmsis_compiler.h>
 }
 
 namespace csp::internal {
+
+// ready_mask in select() has one bit per enabled guard.
+static_assert(ALT_MAX_GUARDS <= 32, "AltScheduler::select(): ready_mask holds at most 32 guards");
 
 // =============================================================
 // AltScheduler Implementation
@@ -25,7 +28,6 @@ unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offs
     for (size_t i = 0; i < amount; ++i) wait_mask |= altFlag(i);
 
     size_t order[ALT_MAX_GUARDS];
-    bool   ready[ALT_MAX_GUARDS];
 
     for (;;) {
         // New round: drop wakeups left over from earlier rounds; the state
@@ -69,7 +71,15 @@ unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offs
 
         // Phase 3: Disable exactly the guards enabled in this round; each
         // reports whether it can complete now (re-verification).
-        for (size_t k = 0; k < enabled; ++k) ready[k] = guardArray[order[k]]->disable();
+        //
+        // Invariant: bit 31-k of ready_mask is set <=> order[k], the k-th
+        // enabled guard in fairness order, was re-verified as ready by its
+        // disable() in this round. __CLZ(ready_mask) is therefore the
+        // smallest such k: the first ready guard in fairness order. CLZ
+        // selects among re-verified guards only, never from the thread flags.
+        uint32_t ready_mask = 0;
+        for (size_t k = 0; k < enabled; ++k)
+            if (guardArray[order[k]]->disable()) ready_mask |= 1UL << (31U - k);
 
         // Phase 4: A claim wins (the partner is committed to this guard);
         // otherwise the first ready guard in fairness order; else stale.
@@ -80,9 +90,8 @@ unsigned int AltScheduler::select(Guard** guardArray, size_t amount, size_t offs
             for (size_t k = 0; k < enabled; ++k)
                 if (altFlag(order[k]) == cflag) { selected = (int)order[k]; break; }
             if (selected < 0) fatal("CSP4CMSIS: Alternative: claimed for a guard that was not enabled");
-        } else {
-            for (size_t k = 0; k < enabled; ++k)
-                if (ready[k]) { selected = (int)order[k]; break; }
+        } else if (ready_mask != 0U) {
+            selected = (int)order[__CLZ(ready_mask)];
         }
         if (selected < 0) continue;                                   // stale wakeup: new round
 
