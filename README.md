@@ -6,7 +6,7 @@ The explanations for this code are in the book; the source files deliberately co
 
 ## Features
 - FreeRTOS with the CMSIS-RTOS v2 API (STM32CubeMX `CMSIS_V2` interface)
-- CSP4CMSIS 3.0.0, in `lib/csp4cmsis/` (unmodified; see `lib/csp4cmsis/VERSION`)
+- CSP4CMSIS 3.0.1, in `lib/csp4cmsis/` (unmodified; see `lib/csp4cmsis/VERSION`)
 - Alternation: `Alternative` with two input guards and `fairSelect()`
 - Rendezvous channels, 2 000 000 messages, each checked for sender id and sequence number
 - Zero heap: no FreeRTOS heap and no C library heap allocation (see [Memory](#memory))
@@ -25,7 +25,7 @@ Tested with:
 | STM32CubeIDE | 2.1.0 (GNU Tools for STM32 14.3.rel1) |
 | STM32CubeMX (only to regenerate code) | 6.17.0 |
 | STM32Cube FW_G4 | V1.6.3 (FreeRTOS 10.3.1) |
-| CSP4CMSIS | 3.0.0 |
+| CSP4CMSIS | 3.0.1 |
 
 ## Serial Configuration
 - Baud Rate: 115200
@@ -48,7 +48,7 @@ The CSP4CMSIS settings are already in the project (G++ compiler, Debug and Relea
 - `Core/` - `main.c` (CubeMX), `application.cpp` (the example)
 - `Drivers/` - STM32 HAL, CMSIS and BSP drivers
 - `Formal model/` - CSP-M model of the network
-- `lib/csp4cmsis/` - CSP4CMSIS 3.0.0
+- `lib/csp4cmsis/` - CSP4CMSIS 3.0.1
 - `Middlewares/` - FreeRTOS middleware
 - `csp4cmsis_map_report.py` - shows how much FLASH and RAM CSP4CMSIS takes (from the linker map file)
 
